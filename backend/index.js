@@ -1,55 +1,84 @@
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
-import axios from "axios";
 
-dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 
-let saldoMultiplicado = 0;
+// Simulamos una "wallet" interna
+let wallet = {
+  saldo: 10000 // saldo inicial de tu cuenta
+};
 
+// Simulamos una base de datos de alias (alias → saldo)
+let cuentas = {
+  "alias.test": 0,
+  "usuario.demo": 0
+};
+
+let ultimoMontoMultiplicado = 0;
+
+// Ruta de prueba
 app.get("/", (req, res) => {
-  res.send("Servidor Stitch funcionando 🚀");
+  res.send("🚀 Backend Wallet funcionando");
 });
 
+// Ruta para multiplicar monto
 app.post("/multiplicar", (req, res) => {
   const { monto } = req.body;
-  saldoMultiplicado = Number(monto) * 100;
-  res.json({ saldoMultiplicado });
+
+  if (!monto || isNaN(monto)) {
+    return res.status(400).json({ error: "Monto inválido" });
+  }
+
+  const multiplicado = monto * 100;
+  ultimoMontoMultiplicado = multiplicado;
+
+  res.json({ resultado: multiplicado });
 });
 
-app.post("/transferir", async (req, res) => {
+// Ruta para transferir
+app.post("/transferir", (req, res) => {
   const { alias } = req.body;
 
-  try {
-    const response = await axios.post(
-      "https://api.mercadopago.com/v1/transfers",
-      {
-        transaction_amount: saldoMultiplicado,
-        target: {
-          type: "alias",
-          value: alias
-        }
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.MP_TOKEN}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
-
-    res.json({ success: true, data: response.data });
-  } catch (error) {
-    console.error("Error al transferir:", error.response?.data || error.message);
-    res.status(500).json({ success: false, error: error.response?.data || error.message });
+  if (!alias || typeof alias !== "string") {
+    return res.status(400).json({ error: "Alias inválido" });
   }
+
+  if (wallet.saldo < ultimoMontoMultiplicado) {
+    return res.status(400).json({ error: "Saldo insuficiente en tu wallet" });
+  }
+
+  // Descontamos de la wallet
+  wallet.saldo -= ultimoMontoMultiplicado;
+
+  // Si no existe el alias, lo creamos
+  if (!cuentas[alias]) {
+    cuentas[alias] = 0;
+  }
+
+  // Le sumamos al alias
+  cuentas[alias] += ultimoMontoMultiplicado;
+
+  res.json({
+    exito: true,
+    enviado: ultimoMontoMultiplicado,
+    a: alias,
+    nuevoSaldo: wallet.saldo
+  });
+});
+
+// Ruta para ver saldos (solo para debug)
+app.get("/saldos", (req, res) => {
+  res.json({
+    wallet,
+    cuentas
+  });
 });
 
 app.listen(PORT, () => {
-  console.log(`Servidor escuchando en puerto ${PORT}`);
+  console.log(`✅ Servidor wallet corriendo en puerto ${PORT}`);
 });
+
